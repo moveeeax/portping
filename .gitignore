@@ -1,0 +1,14 @@
+# Compiled binary
+/portping
+portping
+
+# Test / build artifacts
+*.exe
+*.out
+*.test
+coverage.out
+
+# Editor / OS cruft
+.idea/
+.vscode/
+.DS_Store
