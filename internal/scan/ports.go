@@ -19,7 +19,7 @@ func parsePort(s string) (int, error) {
 	return n, nil
 }
 
-// ParsePorts expands a comma-separated port list such as "22,80,443" into a
+// ParsePorts expands a port specification such as "22,80,8000-8010" into a
 // de-duplicated, order-preserving slice of ports.
 func ParsePorts(spec string) ([]int, error) {
 	parts := strings.Split(spec, ",")
@@ -28,6 +28,27 @@ func ParsePorts(spec string) ([]int, error) {
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
+			continue
+		}
+		if strings.Contains(part, "-") {
+			bounds := strings.SplitN(part, "-", 2)
+			lo, err := parsePort(bounds[0])
+			if err != nil {
+				return nil, err
+			}
+			hi, err := parsePort(bounds[1])
+			if err != nil {
+				return nil, err
+			}
+			if lo > hi {
+				return nil, fmt.Errorf("invalid port range %q: start after end", part)
+			}
+			for p := lo; p <= hi; p++ {
+				if !seen[p] {
+					seen[p] = true
+					ports = append(ports, p)
+				}
+			}
 			continue
 		}
 		p, err := parsePort(part)
