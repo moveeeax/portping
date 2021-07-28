@@ -6,18 +6,31 @@ import (
 )
 
 // splitHostPorts splits a "host:ports" specification into its host and port
-// components.
+// components. Bracketed IPv6 literals ("[::1]:80") are supported.
 func splitHostPorts(spec string) (host, ports string, err error) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
 		return "", "", fmt.Errorf("empty target")
 	}
-	idx := strings.LastIndex(spec, ":")
-	if idx < 0 {
-		return "", "", fmt.Errorf("invalid target %q: missing port", spec)
+	if strings.HasPrefix(spec, "[") {
+		end := strings.Index(spec, "]")
+		if end < 0 {
+			return "", "", fmt.Errorf("invalid target %q: missing ]", spec)
+		}
+		host = spec[1:end]
+		rest := spec[end+1:]
+		if !strings.HasPrefix(rest, ":") {
+			return "", "", fmt.Errorf("invalid target %q: missing port", spec)
+		}
+		ports = rest[1:]
+	} else {
+		idx := strings.LastIndex(spec, ":")
+		if idx < 0 {
+			return "", "", fmt.Errorf("invalid target %q: missing port", spec)
+		}
+		host = spec[:idx]
+		ports = spec[idx+1:]
 	}
-	host = spec[:idx]
-	ports = spec[idx+1:]
 	if strings.TrimSpace(host) == "" {
 		return "", "", fmt.Errorf("invalid target %q: empty host", spec)
 	}
