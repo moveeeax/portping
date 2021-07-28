@@ -32,8 +32,19 @@ func TestParseTargetCIDRAndPortRange(t *testing.T) {
 	}
 }
 
+func TestParseTargetIPv6Bracket(t *testing.T) {
+	got, err := ParseTarget("[::1]:80")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []Target{{Host: "::1", Port: 80}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
 func TestParseTargetErrors(t *testing.T) {
-	cases := []string{"", "nohost", "host:", ":80", "host:99999", "10.0.0.0/28"}
+	cases := []string{"", "nohost", "host:", ":80", "host:99999", "10.0.0.0/28", "[::1]80"}
 	for _, c := range cases {
 		if _, err := ParseTarget(c); err == nil {
 			t.Errorf("ParseTarget(%q) expected error, got nil", c)
