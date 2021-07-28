@@ -10,3 +10,9 @@ func TestTargetAddr(t *testing.T) {
 		t.Fatalf("Addr() = %s, want bracketed IPv6", got)
 	}
 }
+
+func TestTargetString(t *testing.T) {
+	if got := (Target{Host: "host", Port: 443}).String(); got != "host:443" {
+		t.Fatalf("String() = %s", got)
+	}
+}

@@ -15,3 +15,8 @@ type Target struct {
 func (t Target) Addr() string {
 	return net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
 }
+
+// String returns a human readable representation of the target.
+func (t Target) String() string {
+	return t.Addr()
+}
