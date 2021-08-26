@@ -2,13 +2,35 @@ package probe
 
 import (
 	"context"
+	"errors"
 	"net"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/moveeeax/portping/internal/scan"
 )
+
+// fakeDialer returns a canned error, counting attempts. Used to exercise the
+// retry and timeout paths without touching the network.
+type fakeDialer struct {
+	err      error
+	attempts int32
+	delay    time.Duration
+}
+
+func (f *fakeDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	atomic.AddInt32(&f.attempts, 1)
+	if f.delay > 0 {
+		select {
+		case <-time.After(f.delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return nil, f.err
+}
 
 func targetFromAddr(t *testing.T, addr string) scan.Target {
 	t.Helper()
@@ -68,5 +90,55 @@ func TestProbeClosedPort(t *testing.T) {
 	}
 	if res.Err == "" {
 		t.Error("expected error message on closed port")
+	}
+}
+
+func TestProbeInjectedTimeout(t *testing.T) {
+	fake := &fakeDialer{err: context.DeadlineExceeded, delay: 50 * time.Millisecond}
+	p := &Prober{Dialer: fake, Timeout: 10 * time.Millisecond, Count: 1}
+	res := p.Probe(context.Background(), scan.Target{Host: "10.255.255.1", Port: 80})
+	if res.Open {
+		t.Fatal("expected timeout to be reported as closed")
+	}
+	if res.Attempts != 1 {
+		t.Errorf("attempts = %d, want 1", res.Attempts)
+	}
+}
+
+func TestProbeRetries(t *testing.T) {
+	fake := &fakeDialer{err: errors.New("connection refused")}
+	p := &Prober{Dialer: fake, Timeout: 10 * time.Millisecond, Count: 3}
+	res := p.Probe(context.Background(), scan.Target{Host: "127.0.0.1", Port: 9})
+	if res.Open {
+		t.Fatal("expected closed")
+	}
+	if res.Attempts != 3 {
+		t.Errorf("attempts = %d, want 3", res.Attempts)
+	}
+	if got := atomic.LoadInt32(&fake.attempts); got != 3 {
+		t.Errorf("dialer called %d times, want 3", got)
+	}
+}
+
+func TestProbeCountZeroDefaultsToOne(t *testing.T) {
+	fake := &fakeDialer{err: errors.New("nope")}
+	p := &Prober{Dialer: fake, Timeout: 10 * time.Millisecond, Count: 0}
+	res := p.Probe(context.Background(), scan.Target{Host: "127.0.0.1", Port: 9})
+	if res.Attempts != 1 {
+		t.Errorf("attempts = %d, want 1", res.Attempts)
+	}
+}
+
+func TestProbeCanceledContextStops(t *testing.T) {
+	fake := &fakeDialer{err: errors.New("refused")}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	p := &Prober{Dialer: fake, Timeout: 10 * time.Millisecond, Count: 5}
+	res := p.Probe(ctx, scan.Target{Host: "127.0.0.1", Port: 9})
+	if res.Open {
+		t.Fatal("expected closed")
+	}
+	if got := atomic.LoadInt32(&fake.attempts); got != 1 {
+		t.Errorf("dialer called %d times, want 1 (should stop on canceled ctx)", got)
 	}
 }
