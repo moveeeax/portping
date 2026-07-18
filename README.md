@@ -10,7 +10,7 @@ service is listening across a subnet, or sweeping a range of ports on a host.
 ## Install
 
 ```sh
-go install github.com/moveeeax/portping@latest
+go install github.com/cybercapybara/portping@latest
 ```
 
 Or build from a checkout:

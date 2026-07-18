@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/moveeeax/portping/internal/probe"
-	"github.com/moveeeax/portping/internal/scan"
+	"github.com/cybercapybara/portping/internal/probe"
+	"github.com/cybercapybara/portping/internal/scan"
 )
 
 type options struct {

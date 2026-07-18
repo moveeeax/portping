@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/moveeeax/portping/internal/scan"
+	"github.com/cybercapybara/portping/internal/scan"
 )
 
 // Dialer is the subset of net.Dialer used by the prober. It is satisfied by

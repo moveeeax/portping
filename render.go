@@ -6,7 +6,7 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/moveeeax/portping/internal/scan"
+	"github.com/cybercapybara/portping/internal/scan"
 )
 
 func renderTable(w io.Writer, results []scan.Result) {
