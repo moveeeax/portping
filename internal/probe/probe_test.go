@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cybercapybara/portping/internal/scan"
+	"github.com/moveeeax/portping/internal/scan"
 )
 
 // fakeDialer returns a canned error, counting attempts. Used to exercise the

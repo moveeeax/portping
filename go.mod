@@ -1,3 +1,3 @@
-module github.com/cybercapybara/portping
+module github.com/moveeeax/portping
 
 go 1.17

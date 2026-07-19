@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cybercapybara/portping/internal/scan"
+	"github.com/moveeeax/portping/internal/scan"
 )
 
 // collectSpecs gathers target specifications from CLI args and, when requested,
