@@ -5,17 +5,34 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.17 is the minimum declared in go.mod; stable guards against
+        # regressions on current Go.
+        go-version: ["1.17.x", "stable"]
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-go@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: "1.17"
+          go-version: ${{ matrix.go-version }}
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
       - name: Build
         run: go build ./...
       - name: Vet
         run: go vet ./...
       - name: Test
-        run: go test ./...
+        run: go test -race ./...

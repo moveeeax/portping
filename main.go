@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -47,6 +48,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs.BoolVar(&opt.failClosed, "fail-on-unreachable", true, "exit non-zero if any target is unreachable")
 
 	if err := fs.Parse(args); err != nil {
+		// -h/--help is an explicit request, not a usage error.
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		return 2
 	}
 

@@ -154,3 +154,36 @@ func TestRunOpenOnlyFiltersClosed(t *testing.T) {
 		t.Fatalf("open-only output contained closed row: %s", out.String())
 	}
 }
+
+func TestRunHelpExitsZero(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"-h"}, strings.NewReader(""), &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 for explicitly requested help", code)
+	}
+	if !strings.Contains(errBuf.String(), "usage: portping") {
+		t.Fatalf("help output missing usage line: %s", errBuf.String())
+	}
+}
+
+func TestRunOversizedCIDRExitsTwo(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"10.0.0.0/8:80"}, strings.NewReader(""), &out, &errBuf)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2 for an oversized CIDR", code)
+	}
+	if !strings.Contains(errBuf.String(), "more than") {
+		t.Fatalf("expected a size-limit error, got: %s", errBuf.String())
+	}
+}
+
+func TestRunSlashZeroExitsTwo(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"0.0.0.0/0:80"}, strings.NewReader(""), &out, &errBuf)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2 for a /0", code)
+	}
+	if strings.Contains(errBuf.String(), "no targets given") {
+		t.Fatalf("a /0 should be rejected on its own terms, not as an empty target list: %s", errBuf.String())
+	}
+}
