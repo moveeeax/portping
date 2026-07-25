@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # The Go module has no third-party dependencies, so only the CI actions
+  # need keeping current.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci

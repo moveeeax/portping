@@ -41,7 +41,9 @@ func (p *Prober) Probe(ctx context.Context, t scan.Target) scan.Result {
 	}
 
 	var lastErr error
+	made := 0
 	for i := 0; i < attempts; i++ {
+		made = i + 1
 		start := time.Now()
 		dialCtx := ctx
 		var cancel context.CancelFunc
@@ -68,10 +70,12 @@ func (p *Prober) Probe(ctx context.Context, t scan.Target) scan.Result {
 		}
 	}
 
+	// Report the attempts actually made, which is fewer than the configured
+	// count when the context was canceled part-way through the retries.
 	res := scan.Result{
 		Target:   t,
 		Open:     false,
-		Attempts: attempts,
+		Attempts: made,
 	}
 	if lastErr != nil {
 		res.Err = lastErr.Error()

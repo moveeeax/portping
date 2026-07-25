@@ -141,4 +141,8 @@ func TestProbeCanceledContextStops(t *testing.T) {
 	if got := atomic.LoadInt32(&fake.attempts); got != 1 {
 		t.Errorf("dialer called %d times, want 1 (should stop on canceled ctx)", got)
 	}
+	// Attempts must reflect the dials actually made, not the configured Count.
+	if res.Attempts != 1 {
+		t.Errorf("attempts = %d, want 1 (only one dial was made before the ctx cut the retries short)", res.Attempts)
+	}
 }

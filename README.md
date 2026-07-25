@@ -43,6 +43,12 @@ CIDR expansion excludes the network and broadcast addresses for prefixes of
 `/30` and shorter. A `/31` yields both addresses (RFC 3021 point-to-point) and a
 `/32` yields the single host.
 
+Expansion is bounded so that a mistyped prefix cannot exhaust memory before the
+first dial. A single CIDR may cover at most 65536 addresses (a `/16`), and one
+invocation may expand to at most 1048576 distinct `host:port` pairs in total.
+Anything larger is rejected with exit code `2`; split the sweep into narrower
+targets.
+
 Targets may be passed as arguments, read from a file with `--file`, or piped on
 stdin (`--file -`, or simply no arguments). In files and on stdin, blank lines
 and lines beginning with `#` are ignored, and whitespace-separated targets on a
@@ -63,6 +69,7 @@ line are all read.
 ### Exit codes
 
 - `0` — all probed targets were reachable (or `--fail-on-unreachable=false`).
+  Also returned for `-h`/`--help`.
 - `1` — one or more targets were unreachable.
 - `2` — invalid arguments or targets.
 
