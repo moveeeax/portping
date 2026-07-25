@@ -5,6 +5,12 @@ import (
 	"strings"
 )
 
+// MaxTargets is the largest number of distinct host:port pairs a single
+// invocation may expand to. Hosts multiply by ports, so even a CIDR within
+// MaxCIDRHosts can produce billions of pairs when combined with a wide port
+// range; this bounds the total rather than each dimension.
+const MaxTargets = 1 << 20
+
 // splitHostPorts splits a "host:ports" specification into its host and port
 // components. Bracketed IPv6 literals ("[::1]:80") are supported.
 func splitHostPorts(spec string) (host, ports string, err error) {
@@ -43,6 +49,8 @@ func splitHostPorts(spec string) (host, ports string, err error) {
 // ParseTarget expands a single target specification into concrete targets. The
 // host component may be a hostname, an IP literal, or an IPv4 CIDR block; the
 // port component may be a list and/or range such as "22,80,8000-8010".
+//
+// It fails if the specification expands to more than MaxTargets pairs.
 func ParseTarget(spec string) ([]Target, error) {
 	host, portSpec, err := splitHostPorts(spec)
 	if err != nil {
@@ -63,6 +71,12 @@ func ParseTarget(spec string) ([]Target, error) {
 		hosts = []string{host}
 	}
 
+	// Computed in uint64: hosts*ports can reach ~4.3e9, which overflows a
+	// 32-bit int, and the product must be checked before it is allocated.
+	if n := uint64(len(hosts)) * uint64(len(ports)); n > MaxTargets {
+		return nil, fmt.Errorf("target %q expands to %d host:port pairs, more than the %d supported", spec, n, MaxTargets)
+	}
+
 	targets := make([]Target, 0, len(hosts)*len(ports))
 	for _, h := range hosts {
 		for _, p := range ports {
@@ -74,6 +88,8 @@ func ParseTarget(spec string) ([]Target, error) {
 
 // ParseTargets expands and de-duplicates a list of target specifications while
 // preserving first-seen order.
+//
+// It fails if the specifications expand to more than MaxTargets distinct pairs.
 func ParseTargets(specs []string) ([]Target, error) {
 	seen := make(map[Target]bool)
 	var targets []Target
@@ -88,6 +104,9 @@ func ParseTargets(specs []string) ([]Target, error) {
 		}
 		for _, t := range expanded {
 			if !seen[t] {
+				if len(targets) >= MaxTargets {
+					return nil, fmt.Errorf("too many targets: the given specifications expand to more than %d host:port pairs", MaxTargets)
+				}
 				seen[t] = true
 				targets = append(targets, t)
 			}

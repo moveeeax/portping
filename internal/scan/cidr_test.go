@@ -73,3 +73,43 @@ func TestExpandCIDRErrors(t *testing.T) {
 		}
 	}
 }
+
+// A /0 has 2^32 addresses, which overflows a uint32 counter to zero. That used
+// to make ExpandCIDR return an empty host list with a nil error, so the CLI
+// reported the misleading "no targets given" instead of rejecting the block.
+func TestExpandCIDRSlashZeroIsRejected(t *testing.T) {
+	hosts, err := ExpandCIDR("0.0.0.0/0")
+	if err == nil {
+		t.Fatalf("expected an error for /0, got %d hosts and nil error", len(hosts))
+	}
+	if len(hosts) != 0 {
+		t.Errorf("expected no hosts alongside the error, got %d", len(hosts))
+	}
+}
+
+func TestExpandCIDRTooLargeIsRejected(t *testing.T) {
+	// A /8 covers 16.7M addresses; expanding it would allocate them all up
+	// front, before a single dial.
+	for _, c := range []string{"10.0.0.0/8", "10.0.0.0/1", "10.0.0.0/15"} {
+		if _, err := ExpandCIDR(c); err == nil {
+			t.Errorf("ExpandCIDR(%q) expected a too-large error, got nil", c)
+		}
+	}
+}
+
+func TestExpandCIDRAtLimitSucceeds(t *testing.T) {
+	// A /16 is exactly MaxCIDRHosts addresses and must still be allowed.
+	got, err := ExpandCIDR("10.0.0.0/16")
+	if err != nil {
+		t.Fatalf("unexpected error at the limit: %v", err)
+	}
+	if len(got) != MaxCIDRHosts-2 {
+		t.Fatalf("got %d hosts, want %d (network+broadcast excluded)", len(got), MaxCIDRHosts-2)
+	}
+	if got[0] != "10.0.0.1" {
+		t.Errorf("first host = %s, want 10.0.0.1", got[0])
+	}
+	if got[len(got)-1] != "10.0.255.254" {
+		t.Errorf("last host = %s, want 10.0.255.254", got[len(got)-1])
+	}
+}

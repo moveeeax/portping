@@ -71,3 +71,36 @@ func TestParseTargetsEmpty(t *testing.T) {
 		t.Fatal("expected error for no targets")
 	}
 }
+
+// hosts*ports is what actually gets allocated, so the product must be bounded
+// even when each dimension is individually acceptable: a /16 (within
+// MaxCIDRHosts) crossed with every port is ~4.3e9 pairs, which also overflows
+// a 32-bit int.
+func TestParseTargetRejectsOversizedProduct(t *testing.T) {
+	if _, err := ParseTarget("10.0.0.0/16:1-65535"); err == nil {
+		t.Fatal("expected an error for a /16 crossed with all ports, got nil")
+	}
+}
+
+func TestParseTargetLargeButAllowedProduct(t *testing.T) {
+	// 65534 hosts * 4 ports = 262136 pairs, under MaxTargets.
+	got, err := ParseTarget("10.0.0.0/16:22,80,443,8080")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := (MaxCIDRHosts - 2) * 4; len(got) != want {
+		t.Fatalf("got %d targets, want %d", len(got), want)
+	}
+}
+
+func TestParseTargetsRejectsOversizedTotal(t *testing.T) {
+	// Individually fine, but together they exceed MaxTargets.
+	specs := []string{
+		"10.0.0.0/16:1-8",
+		"11.0.0.0/16:1-8",
+		"12.0.0.0/16:1-8",
+	}
+	if _, err := ParseTargets(specs); err == nil {
+		t.Fatal("expected an error once the cumulative total exceeds MaxTargets, got nil")
+	}
+}
