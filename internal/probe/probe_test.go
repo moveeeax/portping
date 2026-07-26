@@ -32,6 +32,23 @@ func (f *fakeDialer) DialContext(ctx context.Context, network, address string) (
 	return nil, f.err
 }
 
+// flakyDialer fails its first `failures` calls, then dials for real. Used to
+// exercise the path where a retry eventually succeeds, distinct from
+// fakeDialer which always fails.
+type flakyDialer struct {
+	failures int
+	calls    int32
+}
+
+func (f *flakyDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	n := atomic.AddInt32(&f.calls, 1)
+	if int(n) <= f.failures {
+		return nil, errors.New("simulated transient failure")
+	}
+	var d net.Dialer
+	return d.DialContext(ctx, network, address)
+}
+
 func targetFromAddr(t *testing.T, addr string) scan.Target {
 	t.Helper()
 	host, portStr, err := net.SplitHostPort(addr)
@@ -117,6 +134,39 @@ func TestProbeRetries(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&fake.attempts); got != 3 {
 		t.Errorf("dialer called %d times, want 3", got)
+	}
+}
+
+func TestProbeRetriesThenSucceeds(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+
+	fake := &flakyDialer{failures: 2}
+	p := &Prober{Dialer: fake, Timeout: time.Second, Count: 5}
+	res := p.Probe(context.Background(), targetFromAddr(t, ln.Addr().String()))
+	if !res.Open {
+		t.Fatalf("expected the retry to eventually succeed, got closed: %s", res.Err)
+	}
+	if res.Attempts != 3 {
+		t.Errorf("attempts = %d, want 3 (2 failures then a success)", res.Attempts)
+	}
+	if got := atomic.LoadInt32(&fake.calls); got != 3 {
+		t.Errorf("dialer called %d times, want 3", got)
+	}
+	if res.Latency <= 0 {
+		t.Errorf("latency = %v, want > 0", res.Latency)
 	}
 }
 

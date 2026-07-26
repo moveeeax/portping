@@ -58,13 +58,18 @@ line are all read.
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `--timeout` | `2s` | Per-dial timeout. |
+| `--timeout` | `2s` | Per-dial timeout. Must be greater than zero. |
 | `--concurrency` | `64` | Number of concurrent workers. |
 | `--count` | `1` | Dial attempts before a target is declared unreachable. |
 | `--json` | `false` | Emit results as a JSON array. |
 | `--open-only` | `false` | Only report reachable targets. |
 | `--file` | | Read targets from a file (`-` for stdin). |
 | `--fail-on-unreachable` | `true` | Exit non-zero if any target is unreachable. |
+
+A zero or negative `--timeout` is rejected rather than accepted as "no
+deadline": without a positive per-dial timeout, a single target that never
+responds (a firewall silently dropping the SYN, for example) would hang the
+whole scan indefinitely instead of being reported as closed.
 
 ### Exit codes
 
