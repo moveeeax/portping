@@ -177,6 +177,23 @@ func TestRunOversizedCIDRExitsTwo(t *testing.T) {
 	}
 }
 
+func TestRunNonPositiveTimeoutExitsTwo(t *testing.T) {
+	cases := []string{"0", "0s", "-1s", "-500ms"}
+	for _, tc := range cases {
+		var out, errBuf bytes.Buffer
+		code := run([]string{"--timeout=" + tc, "127.0.0.1:80"}, strings.NewReader(""), &out, &errBuf)
+		if code != 2 {
+			t.Errorf("timeout=%s: exit = %d, want 2; stderr=%s", tc, code, errBuf.String())
+		}
+		if !strings.Contains(errBuf.String(), "--timeout must be greater than zero") {
+			t.Errorf("timeout=%s: expected a timeout validation error, got: %s", tc, errBuf.String())
+		}
+		if out.Len() != 0 {
+			t.Errorf("timeout=%s: expected no stdout on a validation error, got: %s", tc, out.String())
+		}
+	}
+}
+
 func TestRunSlashZeroExitsTwo(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	code := run([]string{"0.0.0.0/0:80"}, strings.NewReader(""), &out, &errBuf)

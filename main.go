@@ -39,7 +39,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	var opt options
-	fs.DurationVar(&opt.timeout, "timeout", 2*time.Second, "per-dial timeout")
+	fs.DurationVar(&opt.timeout, "timeout", 2*time.Second, "per-dial timeout (must be > 0)")
 	fs.IntVar(&opt.concurrency, "concurrency", 64, "number of concurrent workers")
 	fs.IntVar(&opt.count, "count", 1, "dial attempts before a target is unreachable")
 	fs.BoolVar(&opt.jsonOut, "json", false, "emit results as a JSON array")
@@ -52,6 +52,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
+		return 2
+	}
+
+	// A zero or negative timeout silently disables the per-dial deadline
+	// (probe.Prober only applies it when > 0), so a single unresponsive
+	// target could hang the whole scan forever instead of being reported
+	// as closed. Reject it up front rather than let that surface later.
+	if opt.timeout <= 0 {
+		fmt.Fprintf(stderr, "portping: --timeout must be greater than zero (got %s); a non-positive value would disable the per-dial deadline\n", opt.timeout)
 		return 2
 	}
 
