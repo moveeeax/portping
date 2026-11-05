@@ -19,7 +19,7 @@ Or build from a checkout:
 go build -o portping .
 ```
 
-Requires Go 1.17 or newer. No third-party dependencies.
+Requires Go 1.26 or newer. No third-party dependencies.
 
 ## Usage
 
