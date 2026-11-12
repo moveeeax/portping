@@ -33,7 +33,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "usage: portping [flags] target [target ...]\n\n")
 		fmt.Fprintf(stderr, "A target is HOST:PORTS, where HOST may be a hostname, IP, or IPv4 CIDR\n")
-		fmt.Fprintf(stderr, "and PORTS may be a list and/or range, e.g. 10.0.0.0/28:22,80,8000-8010\n\n")
+		fmt.Fprintf(stderr, "and PORTS may be a list and/or range, e.g. 10.0.0.0/28:22,80,8000-8010\n")
+		fmt.Fprintf(stderr, "Append =open or =closed to assert the expected state, e.g. 10.0.0.5:3306=closed\n\n")
 		fmt.Fprintf(stderr, "flags:\n")
 		fs.PrintDefaults()
 	}
@@ -45,7 +46,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs.BoolVar(&opt.jsonOut, "json", false, "emit results as a JSON array")
 	fs.BoolVar(&opt.openOnly, "open-only", false, "only report reachable targets")
 	fs.StringVar(&opt.file, "file", "", "read targets from file (use - for stdin)")
-	fs.BoolVar(&opt.failClosed, "fail-on-unreachable", true, "exit non-zero if any target is unreachable")
+	fs.BoolVar(&opt.failClosed, "fail-on-unreachable", true, "exit non-zero if any target without an explicit =open/=closed is unreachable")
 
 	if err := fs.Parse(args); err != nil {
 		// -h/--help is an explicit request, not a usage error.
@@ -94,7 +95,17 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		renderTable(stdout, shown)
 	}
 
-	if opt.failClosed && !summary.AllOpen() {
+	return exitCode(summary, opt.failClosed)
+}
+
+// exitCode returns 1 when any target is not in its expected state. Explicit
+// "=open" and "=closed" assertions always count; targets without a suffix are
+// expected open and only count when failOnUnreachable is set.
+func exitCode(s scan.Summary, failOnUnreachable bool) int {
+	if s.MismatchedExplicit > 0 {
+		return 1
+	}
+	if failOnUnreachable && s.Mismatched > 0 {
 		return 1
 	}
 	return 0

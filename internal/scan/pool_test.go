@@ -67,7 +67,7 @@ func TestRunEmpty(t *testing.T) {
 }
 
 func TestRunZeroConcurrencyDefaultsToOne(t *testing.T) {
-	targets := []Target{{"a", 1}, {"b", 2}}
+	targets := []Target{{Host: "a", Port: 1}, {Host: "b", Port: 2}}
 	var calls int
 	var mu sync.Mutex
 	probe := func(ctx context.Context, tg Target) Result {
@@ -83,7 +83,7 @@ func TestRunZeroConcurrencyDefaultsToOne(t *testing.T) {
 }
 
 func TestRunConcurrencyCappedToTargets(t *testing.T) {
-	targets := []Target{{"a", 1}}
+	targets := []Target{{Host: "a", Port: 1}}
 	var ports []int
 	probe := func(ctx context.Context, tg Target) Result {
 		ports = append(ports, tg.Port)
