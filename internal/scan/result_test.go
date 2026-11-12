@@ -4,9 +4,9 @@ import "testing"
 
 func TestAggregate(t *testing.T) {
 	results := []Result{
-		{Target: Target{"a", 1}, Open: true},
-		{Target: Target{"b", 2}, Open: false},
-		{Target: Target{"c", 3}, Open: true},
+		{Target: Target{Host: "a", Port: 1}, Open: true},
+		{Target: Target{Host: "b", Port: 2}, Open: false},
+		{Target: Target{Host: "c", Port: 3}, Open: true},
 	}
 	s := Aggregate(results)
 	if s.Total != 3 || s.Open != 2 || s.Closed != 1 {

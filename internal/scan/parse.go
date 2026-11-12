@@ -48,11 +48,17 @@ func splitHostPorts(spec string) (host, ports string, err error) {
 
 // ParseTarget expands a single target specification into concrete targets. The
 // host component may be a hostname, an IP literal, or an IPv4 CIDR block; the
-// port component may be a list and/or range such as "22,80,8000-8010".
+// port component may be a list and/or range such as "22,80,8000-8010". An
+// optional "=open" or "=closed" suffix sets the expected state of every
+// expanded target.
 //
 // It fails if the specification expands to more than MaxTargets pairs.
 func ParseTarget(spec string) ([]Target, error) {
-	host, portSpec, err := splitHostPorts(spec)
+	hostPorts, expect, err := splitExpect(strings.TrimSpace(spec))
+	if err != nil {
+		return nil, err
+	}
+	host, portSpec, err := splitHostPorts(hostPorts)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +86,7 @@ func ParseTarget(spec string) ([]Target, error) {
 	targets := make([]Target, 0, len(hosts)*len(ports))
 	for _, h := range hosts {
 		for _, p := range ports {
-			targets = append(targets, Target{Host: h, Port: p})
+			targets = append(targets, Target{Host: h, Port: p, Expect: expect})
 		}
 	}
 	return targets, nil
@@ -89,9 +95,18 @@ func ParseTarget(spec string) ([]Target, error) {
 // ParseTargets expands and de-duplicates a list of target specifications while
 // preserving first-seen order.
 //
+// When the same host:port pair appears more than once, an explicit expectation
+// replaces the default one, so "10.0.0.0/28:22 10.0.0.5:22=closed" sweeps the
+// subnet for open SSH except on 10.0.0.5. Contradictory explicit expectations
+// ("=open" and "=closed" for the same pair) are an error.
+//
 // It fails if the specifications expand to more than MaxTargets distinct pairs.
 func ParseTargets(specs []string) ([]Target, error) {
-	seen := make(map[Target]bool)
+	type hostPort struct {
+		host string
+		port int
+	}
+	seen := make(map[hostPort]int) // index into targets
 	var targets []Target
 	for _, spec := range specs {
 		spec = strings.TrimSpace(spec)
@@ -103,13 +118,24 @@ func ParseTargets(specs []string) ([]Target, error) {
 			return nil, err
 		}
 		for _, t := range expanded {
-			if !seen[t] {
-				if len(targets) >= MaxTargets {
-					return nil, fmt.Errorf("too many targets: the given specifications expand to more than %d host:port pairs", MaxTargets)
+			key := hostPort{t.Host, t.Port}
+			if i, ok := seen[key]; ok {
+				prev := targets[i].Expect
+				switch {
+				case !t.Expect.Explicit() || prev == t.Expect:
+					// Nothing new: keep the first entry as is.
+				case !prev.Explicit():
+					targets[i].Expect = t.Expect
+				default:
+					return nil, fmt.Errorf("target %s is expected to be both %s and %s", t.Addr(), prev, t.Expect)
 				}
-				seen[t] = true
-				targets = append(targets, t)
+				continue
 			}
+			if len(targets) >= MaxTargets {
+				return nil, fmt.Errorf("too many targets: the given specifications expand to more than %d host:port pairs", MaxTargets)
+			}
+			seen[key] = len(targets)
+			targets = append(targets, t)
 		}
 	}
 	if len(targets) == 0 {

@@ -11,7 +11,7 @@ import (
 
 func renderTable(w io.Writer, results []scan.Result) {
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "TARGET\tSTATE\tLATENCY\tATTEMPTS\tDETAIL")
+	fmt.Fprintln(tw, "TARGET\tSTATE\tEXPECT\tMATCH\tLATENCY\tATTEMPTS\tDETAIL")
 	for _, r := range results {
 		state := "closed"
 		latency := "-"
@@ -20,7 +20,11 @@ func renderTable(w io.Writer, results []scan.Result) {
 			state = "open"
 			latency = fmt.Sprintf("%.1fms", float64(r.Latency.Microseconds())/1000.0)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", r.Target.Addr(), state, latency, r.Attempts, detail)
+		match := "yes"
+		if !r.Match() {
+			match = "no"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n", r.Target.Addr(), state, r.Target.Expect, match, latency, r.Attempts, detail)
 	}
 	tw.Flush()
 }
@@ -29,6 +33,8 @@ type jsonResult struct {
 	Host      string  `json:"host"`
 	Port      int     `json:"port"`
 	Open      bool    `json:"open"`
+	Expected  string  `json:"expected"`
+	OK        bool    `json:"ok"`
 	LatencyMS float64 `json:"latency_ms"`
 	Attempts  int     `json:"attempts"`
 	Error     string  `json:"error,omitempty"`
@@ -41,6 +47,8 @@ func renderJSON(w io.Writer, results []scan.Result) error {
 			Host:     r.Target.Host,
 			Port:     r.Target.Port,
 			Open:     r.Open,
+			Expected: r.Target.Expect.String(),
+			OK:       r.Match(),
 			Attempts: r.Attempts,
 			Error:    r.Err,
 		}

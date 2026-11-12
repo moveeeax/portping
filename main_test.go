@@ -204,3 +204,127 @@ func TestRunSlashZeroExitsTwo(t *testing.T) {
 		t.Fatalf("a /0 should be rejected on its own terms, not as an empty target list: %s", errBuf.String())
 	}
 }
+
+// listenOpen starts a listener that accepts and closes connections and returns
+// its address.
+func listenOpen(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}()
+	return ln.Addr().String()
+}
+
+// closedAddr returns an address that nothing listens on.
+func closedAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+	return addr
+}
+
+func TestRunExpectClosedMatches(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"--timeout=300ms", listenOpen(t) + "=open", closedAddr(t) + "=closed"}, strings.NewReader(""), &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 when every target matches; stdout=%s stderr=%s", code, out.String(), errBuf.String())
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("want header and 2 rows, got:\n%s", out.String())
+	}
+	if h := strings.Fields(lines[0]); strings.Join(h, " ") != "TARGET STATE EXPECT MATCH LATENCY ATTEMPTS DETAIL" {
+		t.Fatalf("unexpected header: %q", lines[0])
+	}
+	if f := strings.Fields(lines[2]); f[1] != "closed" || f[2] != "closed" || f[3] != "yes" {
+		t.Fatalf("unexpected closed row: %q", lines[2])
+	}
+}
+
+func TestRunExpectClosedButOpenExitOne(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{listenOpen(t) + "=closed"}, strings.NewReader(""), &out, &errBuf)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 for an open port expected closed", code)
+	}
+	if f := strings.Fields(strings.Split(out.String(), "\n")[1]); f[1] != "open" || f[2] != "closed" || f[3] != "no" {
+		t.Fatalf("unexpected row: %s", out.String())
+	}
+}
+
+// --fail-on-unreachable=false waives only targets without a suffix; an
+// explicit assertion still fails the run.
+func TestRunExplicitMismatchIgnoresFailFlag(t *testing.T) {
+	cases := [][]string{
+		{listenOpen(t) + "=closed"},
+		{closedAddr(t) + "=open"},
+	}
+	for _, targets := range cases {
+		var out, errBuf bytes.Buffer
+		args := append([]string{"--timeout=300ms", "--fail-on-unreachable=false"}, targets...)
+		if code := run(args, strings.NewReader(""), &out, &errBuf); code != 1 {
+			t.Errorf("%v: exit = %d, want 1", targets, code)
+		}
+	}
+}
+
+func TestRunExpectFromStdin(t *testing.T) {
+	in := strings.NewReader("# firewall regression\n" + listenOpen(t) + "=open\n" + closedAddr(t) + "=closed\n")
+	var out, errBuf bytes.Buffer
+	code := run([]string{"--timeout=300ms", "--file", "-"}, in, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0; stdout=%s stderr=%s", code, out.String(), errBuf.String())
+	}
+}
+
+func TestRunJSONExpectFields(t *testing.T) {
+	open := listenOpen(t)
+	var out, errBuf bytes.Buffer
+	run([]string{"--json", "--timeout=300ms", open, open + "=closed"}, strings.NewReader(""), &out, &errBuf)
+	// The second spec overrides the default expectation for the same pair.
+	var parsed []map[string]any
+	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+	if len(parsed) != 1 {
+		t.Fatalf("want 1 result, got %+v", parsed)
+	}
+	if parsed[0]["expected"] != "closed" || parsed[0]["ok"] != false {
+		t.Fatalf("unexpected json: %+v", parsed[0])
+	}
+
+	out.Reset()
+	run([]string{"--json", open}, strings.NewReader(""), &out, &errBuf)
+	parsed = nil
+	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+	if parsed[0]["expected"] != "open" || parsed[0]["ok"] != true {
+		t.Fatalf("unexpected json for default expectation: %+v", parsed[0])
+	}
+}
+
+func TestRunInvalidExpectExitTwo(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	if code := run([]string{"127.0.0.1:80=filtered"}, strings.NewReader(""), &out, &errBuf); code != 2 {
+		t.Fatalf("exit = %d, want 2", code)
+	}
+	if code := run([]string{"127.0.0.1:80=open", "127.0.0.1:80=closed"}, strings.NewReader(""), &out, &errBuf); code != 2 {
+		t.Fatalf("exit = %d, want 2 for contradictory expectations", code)
+	}
+}

@@ -28,6 +28,7 @@ usage: portping [flags] target [target ...]
 
 A target is HOST:PORTS, where HOST may be a hostname, IP, or IPv4 CIDR
 and PORTS may be a list and/or range, e.g. 10.0.0.0/28:22,80,8000-8010
+Append =open or =closed to assert the expected state, e.g. 10.0.0.5:3306=closed
 ```
 
 ### Targets
@@ -38,6 +39,17 @@ A target is written as `HOST:PORTS`:
   `[::1]`), or an IPv4 CIDR block (`10.0.0.0/28`).
 - **PORTS** — a comma-separated list of ports and/or ranges, such as
   `22`, `22,80,443`, or `8000-8010`.
+
+A target may end with `=open` or `=closed` to state what it is expected to be,
+for example `10.0.0.5:22=open 10.0.0.5:3306=closed`. The suffix applies to every
+pair the target expands to (`10.0.0.0/28:3306=closed` asserts the port is closed
+on all 14 hosts). Without a suffix a target is expected to be open. Any other
+value after `=` is rejected with exit code `2`.
+
+If the same `host:port` pair is given more than once, an explicit suffix wins
+over the default, so `10.0.0.0/28:22 10.0.0.5:22=closed` expects SSH open
+everywhere except on `10.0.0.5`. Giving the same pair both `=open` and
+`=closed` is an error (exit code `2`).
 
 CIDR expansion excludes the network and broadcast addresses for prefixes of
 `/30` and shorter. A `/31` yields both addresses (RFC 3021 point-to-point) and a
@@ -64,18 +76,24 @@ line are all read.
 | `--json` | `false` | Emit results as a JSON array. |
 | `--open-only` | `false` | Only report reachable targets. |
 | `--file` | | Read targets from a file (`-` for stdin). |
-| `--fail-on-unreachable` | `true` | Exit non-zero if any target is unreachable. |
+| `--fail-on-unreachable` | `true` | Exit non-zero if any target without an explicit `=open`/`=closed` is unreachable. |
 
 A zero or negative `--timeout` is rejected rather than accepted as "no
 deadline": without a positive per-dial timeout, a single target that never
 responds (a firewall silently dropping the SYN, for example) would hang the
 whole scan indefinitely instead of being reported as closed.
 
+`--fail-on-unreachable=false` only waives targets without a suffix. A target
+with an explicit `=open` or `=closed` is an assertion and fails the run when it
+does not match, whatever this flag says.
+
 ### Exit codes
 
-- `0` — all probed targets were reachable (or `--fail-on-unreachable=false`).
-  Also returned for `-h`/`--help`.
-- `1` — one or more targets were unreachable.
+- `0` — every target is in its expected state (or the only mismatches are
+  unreachable targets without a suffix and `--fail-on-unreachable=false` is
+  set). Also returned for `-h`/`--help`.
+- `1` — one or more targets are not in their expected state: an unreachable
+  target expected open, or a reachable target expected closed.
 - `2` — invalid arguments or targets.
 
 ## Examples
@@ -84,11 +102,22 @@ Scan a couple of ports on localhost:
 
 ```sh
 $ portping 127.0.0.1:22,80,443
-TARGET          STATE   LATENCY  ATTEMPTS  DETAIL
-127.0.0.1:22    open    0.3ms    1
-127.0.0.1:80    closed  -        1         dial tcp 127.0.0.1:80: connect: connection refused
-127.0.0.1:443   closed  -        1         dial tcp 127.0.0.1:443: connect: connection refused
+TARGET         STATE   EXPECT  MATCH  LATENCY  ATTEMPTS  DETAIL
+127.0.0.1:22   open    open    yes    0.3ms    1
+127.0.0.1:80   closed  open    no     -        1         dial tcp 127.0.0.1:80: connect: connection refused
+127.0.0.1:443  closed  open    no     -        1         dial tcp 127.0.0.1:443: connect: connection refused
 ```
+
+Check a firewall change in CI: SSH must answer, MySQL must not.
+
+```sh
+$ portping --timeout 500ms 10.0.0.5:22=open 10.0.0.5:3306=closed
+TARGET         STATE   EXPECT  MATCH  LATENCY  ATTEMPTS  DETAIL
+10.0.0.5:22    open    open    yes    1.2ms    1
+10.0.0.5:3306  closed  closed  yes    -        1         dial tcp 10.0.0.5:3306: i/o timeout
+```
+
+The same assertions work in a `--file` list, one per line.
 
 Sweep an SSH port across a /28 with a tight timeout, showing only what answers:
 
@@ -96,7 +125,8 @@ Sweep an SSH port across a /28 with a tight timeout, showing only what answers:
 $ portping --timeout 300ms --open-only 10.0.0.0/28:22
 ```
 
-Emit JSON for further processing:
+Emit JSON for further processing. Each object carries `expected` (`"open"` or
+`"closed"`) and `ok` (whether the observed state matches it):
 
 ```sh
 $ portping --json 10.0.0.0/30:22,80

@@ -5,10 +5,12 @@ import (
 	"strconv"
 )
 
-// Target is a single host:port pair to probe.
+// Target is a single host:port pair to probe, together with the state it is
+// expected to be in.
 type Target struct {
-	Host string
-	Port int
+	Host   string
+	Port   int
+	Expect Expect
 }
 
 // Addr returns the dial address for the target.
